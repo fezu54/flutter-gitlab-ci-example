@@ -1,6 +1,6 @@
 # medium
 
-This repository acts as a full blown code example for my Medium article <enter url when known>
+This repository acts as a full blown code example for https://medium.com/@fezu54/our-story-with-flutter-and-gitlab-ci-26bd40c26155
 
 ## Getting Started
 

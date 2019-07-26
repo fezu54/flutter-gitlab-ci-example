@@ -1,0 +1,8 @@
+app_identifier("flutter.com.medium") # The bundle identifier of your app
+apple_id("marty-mcfly@icloud.com") # Your Apple email address
+
+itc_team_id("20151021") # App Store Connect Team ID
+team_id("TEAM1985") # Developer Portal Team ID
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile

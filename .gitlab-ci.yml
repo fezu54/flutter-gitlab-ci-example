@@ -1,0 +1,128 @@
+stages:
+  - test
+  - package
+  - test_deployment
+  - productive_deployment
+  - notification
+
+variables:
+  LC_ALL: "en_US.UTF-8"
+  LANG: "en_US.UTF-8"
+
+.android_docker_image:
+  image: xetics/flutter:1.5.4-stable
+  tags:
+    - flutter-android
+
+.android_key_store:
+  extends: .android_docker_image
+  before_script:
+    # this will fetch the base64 encoded key store from our CI variables, decode it and place it underneath the path specified in build.gradle
+    - echo "$PLAY_STORE_UPLOAD_KEY" | base64 --decode > android/key.jks
+  only:
+    - master
+
+.setup_fastlane_android:
+  extends: .android_key_store
+  before_script:
+    - cd android/
+    # because the Docker container runs as root currently, we won't do any user-install. Otherwise, it will fail with
+    # $ gem install --user-install bundler
+    # ERROR:  Use --install-dir or --user-install but not both
+    - gem install bundler
+    - bundle install
+
+.setup_fastlane_ios:
+  before_script:
+    - cd ios/
+    - gem install --user-install bundler
+    - bundle install --path vendor/bundle
+    - bundle exec fastlane match
+    - export FLUTTER_APP_VERSION=$(pubver -d ../. get)
+  tags:
+    - ios
+  only:
+    - master
+
+test:
+  extends: .android_docker_image
+  stage: test
+  script:
+    - flutter test --coverage
+    - genhtml coverage/lcov.info --output=coverage
+  artifacts:
+    paths:
+      - coverage/
+    expire_in: 5 days
+
+build_android:
+  stage: package
+  extends: .android_key_store
+  script: flutter build apk --release --build-number=$CI_PIPELINE_ID
+  artifacts:
+    paths:
+      - build/app/outputs/apk/release/app-release.apk
+    expire_in: 1 day
+
+build_ios:
+  stage: package
+  script:
+    # although fastlane also is capable of building the ipa, we are doing it with flutter to ensure it has the same versioning like the Android app
+    - flutter build ios --release --build-number=$CI_PIPELINE_ID
+  artifacts:
+    untracked: true
+    expire_in: 1 day
+  tags:
+    - ios
+  only:
+    - master
+
+ios_testflight_beta_deployment:
+  stage: test_deployment
+  extends: .setup_fastlane_ios
+  dependencies:
+    - build_ios
+  script: bundle exec fastlane beta
+
+android_play_store_internal_and_alpha_deployment:
+  stage: test_deployment
+  extends: .setup_fastlane_android
+  dependencies:
+    - build_android
+  script:
+    - bundle exec fastlane upload_to_play_store_internal
+    - bundle exec fastlane promote_internal_to_alpha
+
+app_store_submit_to_review:
+  stage: productive_deployment
+  extends: .setup_fastlane_ios
+  dependencies:
+    - ios_testflight_beta_deployment
+  script: bundle exec fastlane submit_review
+  when: manual
+  allow_failure: false
+
+android_play_store_productive_deployment:
+  stage: productive_deployment
+  extends: .setup_fastlane_android
+  dependencies:
+    - android_play_store_internal_and_alpha_deployment
+  script: bundle exec fastlane promote_alpha_to_production
+  when: manual
+  allow_failure: false
+
+tweet_about_android_updates:
+  stage: notification
+  extends: .setup_fastlane_android
+  dependencies:
+    - android_play_store_productive_deployment
+  script: bundle exec fastlane notify_twitter_followers
+  when: on_success
+
+tweet_about_ios_updates:
+  stage: notification
+  extends: .setup_fastlane_ios
+  dependencies:
+    - app_store_submit_to_review
+  script: bundle exec fastlane notify_twitter_followers
+  when: on_success

@@ -1,0 +1,104 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+update_fastlane
+
+default_platform(:android)
+
+platform :android do
+
+  require ‘fileutils’
+  languages = ["de-DE", "en-US"]
+
+  desc "Submits the APK to Google Play alpha testing track"
+  lane :upload_to_play_store_internal do
+    languages.each { |languageCode| prepareTestingChangelogs(languageCode)}
+    upload_to_play_store(
+      track: 'internal',
+      apk: '../build/app/outputs/apk/release/app-release.apk',
+      json_key_data: ENV['JSON_KEY_DATA']
+    )
+  end
+
+  desc "Promote Internal to Alpha"
+  lane :promote_internal_to_alpha do
+    upload_to_play_store(
+      track: 'internal',
+      track_promote_to: 'alpha',
+      json_key_data: ENV['JSON_KEY_DATA']
+    )
+  end
+
+  desc "Promote Alpha to Beta"
+  lane :promote_alpha_to_beta do
+    languages.each { |languageCode| prepareProductionChangelogs(languageCode)}
+    upload_to_play_store(
+      track: 'alpha',
+      track_promote_to: 'beta',
+      json_key_data: ENV['JSON_KEY_DATA']
+    )
+  end
+
+  desc "Promote Alpha to Production"
+  lane :promote_alpha_to_production do
+    languages.each { |languageCode| prepareProductionChangelogs(languageCode)}
+    upload_to_play_store(
+      track: 'alpha',
+      track_promote_to: 'production',
+      json_key_data: ENV['JSON_KEY_DATA']
+    )
+  end
+
+  desc "Promote Beta to Production"
+  lane :promote_beta_to_production do
+    upload_to_play_store(
+      track: 'beta',
+      track_promote_to: 'production',
+      json_key_data: ENV['JSON_KEY_DATA']
+    )
+  end
+
+  desc "Post updates on Twitter"
+  lane :notify_twitter_followers do
+    twitter(
+      access_token: ENV['TWITTER_ACCESS_TOKEN'],
+      access_token_secret: ENV['TWITTER_ACCESS_TOKEN_SECRET'],
+      consumer_key: ENV['TWITTER_CONSUMER_API_KEY'],
+      consumer_secret: ENV['TWITTER_CONSUMER_API_SECRET_KEY'],
+      message: "A new version of our Value Stream Tracking App is available in Google Play: https://play.google.com/store/apps/details?id=com.xetics.value_stream_tracking"
+    )
+  end
+
+  def prepareTestingChangelogs(languageCode)
+    puts "--- Preparing test changelogs for language code '#{languageCode}' ---"
+    specificChangelogs = getSpecificChangelogsDirectory(languageCode)
+    createChangelogsFolder(specificChangelogs)
+    File.open("#{specificChangelogs}/#{ENV['CI_PIPELINE_ID']}.txt", "w") {|file| file.write(ENV['CI_COMMIT_MESSAGE']) }
+  end
+
+  def prepareProductionChangelogs(languageCode)
+    puts "--- Preparing productive changelogs for language code '#{languageCode}' ---"
+    sharedChangelogs =  "./../../changelogs/#{languageCode}"
+    specificChangelogs = getSpecificChangelogsDirectory(languageCode)
+    createChangelogsFolder(specificChangelogs)
+    FileUtils.cp("#{sharedChangelogs}/release_notes.txt", "#{specificChangelogs}/#{ENV['CI_PIPELINE_ID']}.txt")
+  end
+
+  def createChangelogsFolder(changelogsDirectory)
+    FileUtils.mkdir_p changelogsDirectory
+  end
+
+  def getSpecificChangelogsDirectory(languageCode)
+    "./metadata/android/#{languageCode}/changelogs"
+  end
+end

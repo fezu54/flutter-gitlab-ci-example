@@ -1,6 +1,6 @@
 # medium
 
-This repository is acts as an full blown code example for my Medium article <enter url when known>
+This repository acts as an full blown code example for my Medium article <enter url when known>
 
 ## Getting Started
 
